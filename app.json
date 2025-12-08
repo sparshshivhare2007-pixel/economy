@@ -1,0 +1,63 @@
+{
+  "name": "Shizuka",
+  "description": "Shizuka Economy Bot",
+  "logo": "https://telegra.ph/file/43b46c02ace4d9b83c96f.jpg",
+  "keywords": [
+    "telegram",
+    "bot",
+    "economy",
+    "python",
+    "shizuka",
+    "mongodb"
+  ],
+
+  "stack": "container",
+
+  "env": {
+    "BOT_TOKEN": {
+      "description": "Telegram bot token from @BotFather.",
+      "value": "",
+      "required": true
+    },
+    "MONGO_URI": {
+      "description": "MongoDB connection string (MongoDB Atlas recommended).",
+      "value": "",
+      "required": true
+    },
+    "OWNER_ID": {
+      "description": "Owner user ID of the bot.",
+      "value": "8131451038",
+      "required": true
+    },
+    "ADMIN_GROUP_ID": {
+      "description": "Admin/Logs group ID.",
+      "value": "-1003441326277",
+      "required": true
+    },
+    "OPENAI_API_KEY": {
+      "description": "OpenAI API key (if bot uses AI features).",
+      "value": "",
+      "required": false
+    }
+  },
+
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+
+  "formation": {
+    "worker": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  },
+
+  "repository": "https://github.com/sparshshivhare2007-pixel/economy",
+  "addons": [
+    {
+      "plan": "heroku-mongodb"
+    }
+  ]
+}
