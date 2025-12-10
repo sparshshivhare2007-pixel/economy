@@ -1,35 +1,67 @@
-import datetime
+from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
+from telegram.constants import ParseMode
+
+# Economy Database
 from database.users import get_user, users
-from helpers.utils import stylize_text
+from helpers.utils import format_money
 
 
 async def daily(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    user = get_user(user_id)
+    tg_user = update.effective_user
 
-    now = datetime.datetime.utcnow()
-    last = user.get("daily_cooldown")
+    user = get_user(user_id, tg_user.first_name)
 
-    if last:
-        diff = (last + datetime.timedelta(hours=24)) - now
-        if diff.total_seconds() > 0:
-            return await update.message.reply_text(
-                f"⏳ Already claimed!\n"
-                f"Next in: <b>{int(diff.total_seconds()//3600)}h</b>",
-                parse_mode="HTML"
-            )
+    now = datetime.utcnow()
+    last = user.get("last_daily")
 
-    amount = 500
+    # -------------------------
+    # DAILY COOLDOWN CHECK
+    # -------------------------
+    if last and (now - last) < timedelta(hours=24):
+        rem = timedelta(hours=24) - (now - last)
+        hours = rem.total_seconds() // 3600
+        return await update.message.reply_text(
+            f"⏳ <b>Cooldown!</b>\nCome back after <b>{int(hours)}h</b>.",
+            parse_mode=ParseMode.HTML
+        )
 
+    # -------------------------
+    # STREAK HANDLING
+    # -------------------------
+    streak = user.get("daily_streak", 0)
+
+    # If user returns after 48h → streak reset
+    if last and (now - last) > timedelta(hours=48):
+        streak = 0
+
+    streak += 1
+
+    reward = 500
+    bonus = 10000 if streak % 7 == 0 else 0
+
+    # -------------------------
+    # APPLY REWARD
+    # -------------------------
     users.update_one(
         {"user_id": user_id},
-        {"$set": {"daily_cooldown": now}, "$inc": {"balance": amount}}
+        {
+            "$set": {"last_daily": now, "daily_streak": streak},
+            "$inc": {"balance": reward + bonus}
+        }
     )
 
-    await update.message.reply_text(
-        f"💸 <b>{stylize_text('Daily Reward Claimed!')}</b>\n"
-        f"You received <b>${amount}</b>.",
-        parse_mode="HTML"
+    # -------------------------
+    # SEND MESSAGE
+    # -------------------------
+    msg = (
+        f"📅 <b>Daily Reward — Day {streak}</b>\n"
+        f"💰 Earned: <code>{format_money(reward)}</code>"
     )
+
+    if bonus:
+        msg += f"\n🎉 <b>Weekly Bonus:</b> <code>{format_money(bonus)}</code>"
+
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
