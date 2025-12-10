@@ -12,29 +12,6 @@ from database.users import (
     format_delta
 )
 
-# -------------------- OPENAI GPT HELPER --------------------
-import os
-import openai
-
-openai.api_key = os.getenv("OPENAI_API_KEY")
-
-async def ask_gpt(prompt: str, model: str = "gpt-3.5-turbo"):
-    """
-    Sends a prompt to OpenAI GPT and returns the response.
-    """
-    try:
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=500
-        )
-        return response.choices[0].message.content
-
-    except Exception as e:
-        return f"❌ Error: {e}"
-
-
 # -------------------- UTILITY: RANDOM PERCENTAGE --------------------
 import random
 
