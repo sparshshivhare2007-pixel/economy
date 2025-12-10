@@ -1,34 +1,22 @@
 # database/groups.py
-
+from pymongo import MongoClient
 import os
-from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 
 load_dotenv()
-
 MONGO_URI = os.getenv("MONGO_URI")
-
-client = AsyncIOMotorClient(MONGO_URI)
+client = MongoClient(MONGO_URI)
 db = client["economy_bot"]
 
 groups_db = db["groups"]
 
+def add_group_id(group_id: int):
+    if not groups_db.find_one({"group_id": group_id}):
+        groups_db.insert_one({"group_id": group_id, "economy_open": True})
 
-async def is_group_open(chat_id: int) -> bool:
-    """
-    Check if a group's economy is open.
-    Defaults to True if not found.
-    """
-    group = await groups_db.find_one({"chat_id": chat_id})
-    return group.get("open", True) if group else True
+def is_group_open(group_id: int) -> bool:
+    group = groups_db.find_one({"group_id": group_id})
+    return group.get("economy_open", True) if group else True
 
-
-async def set_group_status(chat_id: int, status: bool):
-    """
-    Set the economy open/close status for a group.
-    """
-    await groups_db.update_one(
-        {"chat_id": chat_id},
-        {"$set": {"open": status}},
-        upsert=True
-    )
+def set_group_status(group_id: int, status: bool):
+    groups_db.update_one({"group_id": group_id}, {"$set": {"economy_open": status}}, upsert=True)
