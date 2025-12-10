@@ -1,4 +1,7 @@
-# database/users.py
+# ---------------------------------------------------------
+#              FINAL MERGED ECONOMY + RYAN BAKA USER DB
+# ---------------------------------------------------------
+
 from pymongo import MongoClient
 from datetime import datetime
 import os
@@ -10,16 +13,19 @@ MONGO_URI = os.getenv("MONGO_URI")
 client = MongoClient(MONGO_URI)
 db = client["economy_bot"]
 
-# Collections
-users = db["users"]              # user stats, balance, xp
-groups_db = db["groups"]         # group settings (welcome, economy toggle)
-sudoers = db["sudoers"]          # admin permissions
-chatbot = db["chatbot"]          # AI chat history
-riddles = db["riddles"]          # active riddles
+# ---------------------------------------------------------
+# COLLECTIONS
+# ---------------------------------------------------------
+users = db["users"]            # full user profile
+groups_db = db["groups"]       # group settings
+sudoers = db["sudoers"]        # sudoers list
+chatbot = db["chatbot"]        # AI chat memory
+riddles = db["riddles"]        # riddles state
 
-# -----------------------------
-# USER CREATION / FETCH
-# -----------------------------
+# ---------------------------------------------------------
+#   CREATE / FETCH USER (FULL RYAN BAKA + ECONOMY STRUCTURE)
+# ---------------------------------------------------------
+
 def get_user(user_id: int, first_name: str = None):
     user = users.find_one({"user_id": user_id})
 
@@ -27,39 +33,48 @@ def get_user(user_id: int, first_name: str = None):
         user = {
             "user_id": user_id,
             "first_name": first_name or "User",
+
+            # --- ECONOMY SYSTEM ---
             "balance": 0,
             "bank": 0,
-            "kills": 0,
-            "killed": False,
-            "protection_until": None,
-            "messages_count": 0,
-            "level": 1,
+
+            # --- XP SYSTEM ---
             "xp": 0,
+            "level": 1,
             "badge": "🟢 Rookie",
+            "messages_count": 0,
+
+            # --- RYAN BAKA SYSTEM ---
             "inventory": [],
             "waifus": [],
+            "kills": 0,
             "status": "alive",
-            "death_time": None
+            "death_time": None,
+            "protection_until": None,
+            "seen_groups": [],
+
+            # timestamps
+            "registered_at": datetime.utcnow(),
         }
         users.insert_one(user)
 
     return user
 
 
-# RyanBaka compatibility function
+# RyanBaka Compatibility: used in waifu/shop/welcome system
 def ensure_user_exists(user_obj):
-    """Used by welcome system, shop, waifu."""
     return get_user(user_obj.id, user_obj.first_name)
 
 
-# -----------------------------
-# XP & MESSAGE COUNT
-# -----------------------------
+# ---------------------------------------------------------
+# XP + LEVEL SYSTEM
+# ---------------------------------------------------------
+
 def add_message_count(user_id: int):
     user = get_user(user_id)
 
     new_xp = user.get("xp", 0) + 2
-    new_count = user.get("messages_count", 0) + 1
+    msg_count = user.get("messages_count", 0) + 1
 
     level = user.get("level", 1)
     required = level * 200
@@ -69,12 +84,12 @@ def add_message_count(user_id: int):
         new_xp = 0
         badge = get_badge(level)
     else:
-        badge = user.get("badge")
+        badge = user.get("badge", "🟢 Rookie")
 
     users.update_one(
         {"user_id": user_id},
         {"$set": {
-            "messages_count": new_count,
+            "messages_count": msg_count,
             "xp": new_xp,
             "level": level,
             "badge": badge
@@ -96,18 +111,21 @@ def get_badge(level: int):
     return "💎 Legendary"
 
 
-# -----------------------------
+# ---------------------------------------------------------
 # PROTECTION SYSTEM
-# -----------------------------
+# ---------------------------------------------------------
+
 def is_protected(user_id: int):
     user = get_user(user_id)
     until = user.get("protection_until")
+
     return bool(until and datetime.utcnow() < until)
 
 
-# -----------------------------
+# ---------------------------------------------------------
 # TIME FORMATTER
-# -----------------------------
+# ---------------------------------------------------------
+
 def format_delta(seconds: int):
     sec = int(seconds)
     h = sec // 3600
@@ -115,14 +133,15 @@ def format_delta(seconds: int):
     m = sec // 60
     s = sec % 60
 
-    res = []
-    if h: res.append(f"{h}h")
-    if m: res.append(f"{m}m")
-    if s or not res: res.append(f"{s}s")
-    return " ".join(res)
+    result = []
+    if h: result.append(f"{h}h")
+    if m: result.append(f"{m}m")
+    if s or not result: result.append(f"{s}s")
+    return " ".join(result)
 
 
-# -----------------------------
-# EXPORT FOR RANKING
-# -----------------------------
+# ---------------------------------------------------------
+# EXPORT
+# ---------------------------------------------------------
+
 user_db = users
