@@ -1,17 +1,27 @@
-# main.py
+# ============================
+#          main.py
+# ============================
+
 import os
+import asyncio
 from dotenv import load_dotenv
 from telegram import Update
 from telegram.ext import (
     Application,
     CommandHandler,
+    MessageHandler,
     CallbackQueryHandler,
     ContextTypes,
-    MessageHandler,
     filters
 )
 
-# -------------------- DATABASE --------------------
+# ------------ LOAD ENV ------------
+load_dotenv()
+TOKEN = os.getenv("BOT_TOKEN")
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID", "0"))
+
+# ------------ IMPORT DATABASE ------------
 from database.users import (
     get_user,
     user_db,
@@ -21,18 +31,12 @@ from database.users import (
     groups_db
 )
 
-# -------------------- LOAD ENV --------------------
-load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN")
-OWNER_ID = int(os.getenv("OWNER_ID", "0"))
-ADMIN_GROUP_ID = int(os.getenv("ADMIN_GROUP_ID", "0"))
-
-# -------------------- IMPORT COMMANDS --------------------
+# ------------ IMPORT ALL COMMANDS ------------
 from commands.start_command import start_command, button_handler
-from commands.group_management import register_group_management  
+from commands.group_management import register_group_management
 
 from commands.economy_guide import economy_guide
-from commands.help_command import help_command  
+from commands.help_command import help_command
 from commands.transfer_balance import transfer_balance
 from commands.claim import claim
 from commands.own import own
@@ -66,26 +70,23 @@ from commands.bank import bank
 from commands.deposit import deposit
 from commands.withdraw import withdraw
 
-# AI Chat
+# ------------ AI CHAT ------------
 from commands.chat import chat_handler
 
 
-# =====================================================
-#                   BROADCAST SYSTEM
-# =====================================================
-import asyncio
+# ====================================================
+#                  BROADCAST SYSTEM
+# ====================================================
 
-# -------- NORMAL BROADCAST ----------
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return await update.message.reply_text("⛔ You are not authorized.")
 
     if not context.args:
-        return await update.message.reply_text("⚠️ Usage: /broadcast <message>")
+        return await update.message.reply_text("⚠ Usage: /broadcast <text>")
 
     text = " ".join(context.args)
-    sent = 0
-    failed = 0
+    sent = failed = 0
 
     for u in users.find():
         try:
@@ -104,68 +105,60 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             failed += 1
 
     await update.message.reply_text(
-        f"📢 <b>Broadcast Completed</b>\n\n"
-        f"✅ Sent: {sent}\n"
-        f"❌ Failed: {failed}",
+        f"📢 <b>Broadcast Finished</b>\n"
+        f"✅ Sent: {sent}\n❌ Failed: {failed}",
         parse_mode="HTML"
     )
 
 
-# -------- REPLY-STYLE BROADCAST ----------
 async def replycast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return await update.message.reply_text("⛔ You are not authorized.")
 
     if not context.args:
-        return await update.message.reply_text("⚠️ Usage: /replycast <message>")
+        return await update.message.reply_text("⚠ Usage: /replycast <text>")
 
     text = " ".join(context.args)
+    msg = f"💬 <b>Broadcast Reply</b>\n\n{text}"
 
-    reply_message = (
-        f"💬 <b>Broadcast Reply</b>\n"
-        f"<i>(Looks like a reply, not forwarded)</i>\n\n"
-        f"{text}"
-    )
-
-    sent = 0
-    failed = 0
+    sent = failed = 0
 
     for u in users.find():
         try:
-            await context.bot.send_message(u["user_id"], reply_message, parse_mode="HTML")
+            await context.bot.send_message(u["user_id"], msg, parse_mode="HTML")
             sent += 1
-            await asyncio.sleep(0.05)
         except:
             failed += 1
 
     for g in groups_db.find():
         try:
-            await context.bot.send_message(g["group_id"], reply_message, parse_mode="HTML")
+            await context.bot.send_message(g["group_id"], msg, parse_mode="HTML")
             sent += 1
-            await asyncio.sleep(0.05)
         except:
             failed += 1
 
     await update.message.reply_text(
-        f"📢 <b>Replycast Completed</b>\n\n"
-        f"✅ Sent: {sent}\n"
-        f"❌ Failed: {failed}",
+        f"📢 <b>Replycast Finished</b>\n"
+        f"✅ Sent: {sent}\n❌ Failed: {failed}",
         parse_mode="HTML"
     )
 
 
-# =====================================================
+# ====================================================
+#                  AUTO RESTART
+# ====================================================
 
-
-# -------------------- AUTO RESTART --------------------
 async def test_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
-        return await update.message.reply_text("⛔ You are not authorized.")
-    await update.message.reply_text("🔄 Restarting bot...")
+        return await update.message.reply_text("⛔ Unauthorized")
+    await update.message.reply_text("🔄 Restarting...")
     os._exit(1)
 
 
-# -------------------- TRACK USERS --------------------
+# ====================================================
+#               USER TRACKING
+# ====================================================
+
 async def track_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
@@ -176,39 +169,43 @@ async def track_users(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 ADMIN_GROUP_ID,
-                f"👤 <a href='tg://user?id={user.id}'>{user.first_name}</a> started the bot.",
+                f"👤 <a href='tg://user?id={user.id}'>{user.first_name}</a> used /start",
                 parse_mode="HTML"
             )
         except:
             pass
 
 
-# -------------------- BALANCE --------------------
+# ====================================================
+#            ECONOMY — BALANCE + WORK
+# ====================================================
+
 async def balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.reply_to_message:
         target = update.message.reply_to_message.from_user
         user_id = target.id
         name = target.first_name
     else:
-        user_id = update.effective_user.id
-        name = update.effective_user.first_name
+        target = update.effective_user
+        user_id = target.id
+        name = target.first_name
 
-    user = get_user(user_id)
-    rank_data = list(user_db.find().sort("balance", -1))
-    ids = [u["user_id"] for u in rank_data]
-    rank = ids.index(user_id) + 1 if user_id in ids else len(ids) + 1
-    status = "☠️ Dead" if user.get("killed") else "Alive"
+    data = get_user(user_id)
+    rank_list = list(user_db.find().sort("balance", -1))
+    ids = [u["user_id"] for u in rank_list]
+    rank = ids.index(user_id) + 1 if user_id in ids else len(ids)
+
+    status = "☠ Dead" if data.get("killed") else "Alive"
 
     await update.message.reply_text(
-        f"👤 Name: {name}\n"
-        f"💰 Balance: ${user['balance']}\n"
+        f"👤 {name}\n"
+        f"💰 Balance: ${data['balance']}\n"
         f"🏆 Rank: #{rank}\n"
         f"❤️ Status: {status}\n"
-        f"⚔️ Kills: {user['kills']}"
+        f"⚔ Kills: {data['kills']}"
     )
 
 
-# -------------------- WORK --------------------
 async def work(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(update.effective_user.id)
     reward = 200
@@ -216,58 +213,62 @@ async def work(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"💼 You worked and earned {reward} coins!")
 
 
-# -------------------- ERROR HANDLER --------------------
-async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    print("\n⚠️ ERROR OCCURRED ⚠️")
-    print(context.error)
-    print("------------------------------------\n")
+# ====================================================
+#                   ERROR LOGGING
+# ====================================================
+
+async def error_handler(update, context):
+    print("⚠ ERROR:", context.error)
 
 
-# -------------------- AI + XP MESSAGE HANDLER --------------------
+# ====================================================
+#           AI CHAT + XP MESSAGE HANDLER
+# ====================================================
+
 async def ai_group_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not msg:
         return
 
-    text = msg.text.lower()
-
+    text = (msg.text or "").lower()
     add_message_count(msg.from_user.id)
 
+    # Private → Always AI
     if msg.chat.type == "private":
         return await chat_handler(update, context)
 
+    # Group → only if replying to bot OR tag
     if context.bot.username.lower() in text:
         return await chat_handler(update, context)
 
     if msg.reply_to_message and msg.reply_to_message.from_user.id == context.bot.id:
         return await chat_handler(update, context)
 
-    return
 
+# ====================================================
+#                     MAIN
+# ====================================================
 
-# -------------------- MAIN --------------------
 def main():
     app = Application.builder().token(TOKEN).build()
     app.add_error_handler(error_handler)
 
-    # Track users
+    # Join tracking
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, track_users))
 
     # /start
     app.add_handler(CommandHandler("start", start_command))
-
-    # Buttons
     app.add_handler(CallbackQueryHandler(button_handler))
 
     # Restart
     app.add_handler(CommandHandler("test", test_restart))
 
-    # Broadcast Commands
+    # Broadcast
     app.add_handler(CommandHandler("broadcast", broadcast))
     app.add_handler(CommandHandler("replycast", replycast))
 
-    # Economy commands
-    economy_commands = [
+    # Public economy commands
+    for name, func in [
         ("balance", balance), ("work", work), ("economy", economy_guide),
         ("transfer", transfer_balance), ("claim", claim), ("own", own),
         ("crush", crush), ("love", love), ("slap", slap), ("items", items),
@@ -275,24 +276,21 @@ def main():
         ("protect", protect), ("toprich", toprich), ("topkill", topkill),
         ("kill", kill), ("revive", revive), ("open", open_economy),
         ("close", close_economy)
-    ]
-    for cmd, h in economy_commands:
-        app.add_handler(CommandHandler(cmd, h))
+    ]:
+        app.add_handler(CommandHandler(name, func))
 
     # Hidden commands
-    hidden_cmds = [
+    for name, func in [
         ("mine", mine), ("farm", farm), ("crime", crime), ("heal", heal),
         ("shop", shop), ("buy", buy), ("sell", sell),
-        ("profile", profile), ("bank", bank),
-        ("deposit", deposit), ("withdraw", withdraw)
-    ]
-    for cmd, h in hidden_cmds:
-        app.add_handler(CommandHandler(cmd, h))
+        ("profile", profile), ("bank", bank), ("deposit", deposit),
+        ("withdraw", withdraw)
+    ]:
+        app.add_handler(CommandHandler(name, func))
 
     # Fun commands
-    fun_commands = [("punch", punch), ("hug", hug), ("couple", couple)]
-    for cmd, h in fun_commands:
-        app.add_handler(CommandHandler(cmd, h))
+    for name, func in [("punch", punch), ("hug", hug), ("couple", couple)]:
+        app.add_handler(CommandHandler(name, func))
 
     # Group Management
     register_group_management(app)
