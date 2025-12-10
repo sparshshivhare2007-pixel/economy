@@ -1,78 +1,36 @@
+# commands/kill.py
+from random import randint
 from telegram import Update
 from telegram.ext import ContextTypes
+from telegram.constants import ParseMode
 
-# 🔥 Database imports
-from database.users import get_user, users
-from database.groups import is_group_open
-
-# 🔥 Local helpers (no DB)
-from helpers import is_protected, format_delta
-
+from helpers.utils import resolve_target, format_money
+from database.users import users, get_user
 
 async def kill(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-
-    # 1️⃣ Check if economy open (ASYNC!)
-    if not await is_group_open(chat_id):
-        return await update.message.reply_text(
-            "❌ Economy commands abhi band hain is group me!"
-        )
-
-    msg = update.message
-
-    # 2️⃣ Reply required
-    if not msg.reply_to_message:
-        return await msg.reply_text(
-            "⚠️ Kisi ko kill karna hai? Uske message ka reply karo!"
-        )
-
-    killer = update.effective_user
-    killer_id = killer.id
-
-    target_user = msg.reply_to_message.from_user
-    target_id = target_user.id
-
-    BOT_ID = context.bot.id
-
-    # 3️⃣ Don't allow killing bot
-    if target_id == BOT_ID:
-        return await msg.reply_text(
-            "🤖 Bot ko kill? 😂\nBhai aukaat check kar… main immortal hoon!"
-        )
-
-    # 4️⃣ Prevent self-kill
-    if killer_id == target_id:
-        return await msg.reply_text(
-            "❌ Apne aap ko kill? 😂\nBhai thoda calm ho ja!"
-        )
-
-    # 5️⃣ Protection check
-    protected, remaining = is_protected(target_id)
-    if protected:
-        return await msg.reply_text(
-            f"🛡️ {target_user.first_name} protected hai!\n"
-            f"⏳ Remaining: {format_delta(remaining)}"
-        )
-
-    # 6️⃣ Check if already killed
-    target_data = get_user(target_id)
-
-    if target_data.get("killed", False):
-        return await msg.reply_text(
-            f"⚠️ {target_user.first_name} toh pehle hi swarg me VIP pass lekar baitha hai 😭\n"
-            "Pehle revive karo fir bajana!"
-        )
-
-    # 7️⃣ Perform kill
-    users.update_one({"user_id": killer_id}, {"$inc": {"kills": 1}})
-    users.update_one({"user_id": target_id}, {"$set": {"balance": 0, "killed": True}})
-
-    # 8️⃣ Success message
-    return await msg.reply_text(
-        f"⚔️ *Scene Over!*\n"
-        f"🔥 {killer.first_name} ne {target_user.first_name} ko ek hi vaar me uda diya! 😈\n"
-        f"💸 Balance → 0\n"
-        f"💀 Status → KILLED\n"
-        f"OP kill! 😎",
-        parse_mode="Markdown"
+    user_obj = update.effective_user
+    user = get_user(user_obj.id)
+    target, error = await resolve_target(update, context)
+    if not target or user["user_id"] == target["user_id"]:
+        return await update.message.reply_text("⚠️ <b>Invalid target.</b>", parse_mode=ParseMode.HTML)
+    target_doc = users.find_one({"user_id": target["user_id"]})
+    if not target_doc:
+        return await update.message.reply_text("⚠️ Target not found.", parse_mode=ParseMode.HTML)
+    if target_doc.get("status") == "dead":
+        return await update.message.reply_text("💀 Already dead.", parse_mode=ParseMode.HTML)
+    if user.get("status") == "dead":
+        return await update.message.reply_text("💀 Dead users cannot kill.", parse_mode=ParseMode.HTML)
+    success = randint(1, 100)
+    if success < 60:
+        jail_fine = randint(100, 300)
+        users.update_one({"user_id": user["user_id"]}, {"$inc": {"balance": -jail_fine}})
+        return await update.message.reply_text(f"❌ <b>Attack Failed!</b>\n🚓 Police fined you <code>{format_money(jail_fine)}</code>", parse_mode=ParseMode.HTML)
+    loot = target_doc.get("balance", 0) // 2
+    users.update_one({"user_id": user["user_id"]}, {"$inc": {"balance": loot, "kills": 1}})
+    users.update_one({"user_id": target_doc["user_id"]}, {"$set": {"status": "dead"}, "$inc": {"balance": -loot}})
+    msg = (
+        f"⚔️ <b>Kill Successful!</b>\n"
+        f"💰 Looted: <code>{format_money(loot)}</code>\n"
+        f"🔪 Total Kills: {user.get('kills', 0) + 1}"
     )
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
