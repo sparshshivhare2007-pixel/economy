@@ -1,69 +1,84 @@
 # helpers/utils.py
 import html
 import random
-import asyncio
 from typing import Tuple, Optional, Dict, Any
 from telegram import Update
 from telegram.ext import ContextTypes
 
-# SUDO_USERS will be reloaded from DB
+# GLOBAL SUDO LIST (loaded from DB)
 SUDO_USERS = []
 
-# ----------------------- RANDOM LOVE PERCENTAGE -----------------------
+
+# -------------------------------------------------
+# 1) RANDOM PERCENTAGE (Love, Crush, etc.)
+# -------------------------------------------------
 def random_percentage() -> int:
-    """Returns a random 1–100 percentage."""
     return random.randint(1, 100)
 
-# ----------------------- MONEY FORMATTER -----------------------
+
+# -------------------------------------------------
+# 2) MONEY FORMATTER
+# -------------------------------------------------
 def format_money(amount: int) -> str:
-    """Formats currency for economy commands."""
     try:
-        return f"${int(amount)}"
-    except Exception:
+        return f"${int(amount):,}"
+    except:
         return str(amount)
 
-# ----------------------- MENTION BUILDER -----------------------
-def get_mention(user_doc_or_dict: Dict[str, Any]) -> str:
-    """
-    Accepts MongoDB doc or dict with 'user_id' + 'first_name'
-    """
+
+# -------------------------------------------------
+# 3) FANCY FONT (RyanBaka style aesthetic)
+# -------------------------------------------------
+def stylize_text(text: str) -> str:
+    font_map = {
+        'A':'ᴧ','B':'ʙ','C':'ᴄ','D':'ᴅ','E':'Є','F':'Ғ','G':'ɢ',
+        'H':'ʜ','I':'ɪ','J':'ᴊ','K':'ᴋ','L':'ʟ','M':'ϻ','N':'η',
+        'O':'σ','P':'ᴘ','Q':'ǫ','R':'ᴚ','S':'s','T':'ᴛ','U':'υ',
+        'V':'ᴠ','W':'ᴡ','X':'x','Y':'ʏ','Z':'ᴢ',
+        'a':'ᴧ','b':'ʙ','c':'ᴄ','d':'ᴅ','e':'є','f':'ғ','g':'ɢ',
+        'h':'ʜ','i':'ɪ','j':'ᴊ','k':'ᴋ','l':'ʟ','m':'ϻ','n':'η',
+        'o':'σ','p':'ᴘ','q':'ǫ','r':'ʀ','s':'s','t':'ᴛ','u':'υ',
+        'v':'ᴠ','w':'ᴡ','x':'x','y':'ʏ','z':'ᴢ',
+        '0':'𝟎','1':'𝟏','2':'𝟐','3':'𝟑','4':'𝟒','5':'𝟓',
+        '6':'𝟔','7':'𝟕','8':'𝟖','9':'𝟗'
+    }
+    return "".join(font_map.get(c, c) for c in str(text))
+
+
+# -------------------------------------------------
+# 4) GET MENTION (HTML Safe)
+# -------------------------------------------------
+def get_mention(user: Dict[str, Any]) -> str:
     try:
-        uid = user_doc_or_dict.get("user_id")
-        name = (
-            user_doc_or_dict.get("first_name")
-            or user_doc_or_dict.get("name")
-            or str(uid)
-        )
+        uid = user.get("user_id")
+        name = user.get("first_name") or user.get("name") or "User"
         return f"<a href='tg://user?id={uid}'><b>{html.escape(str(name))}</b></a>"
-    except Exception:
+    except:
         return "<b>User</b>"
 
-# ----------------------- TARGET RESOLVER -----------------------
+
+# -------------------------------------------------
+# 5) TARGET RESOLVER (Reply / ID / @username)
+# -------------------------------------------------
 async def resolve_target(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     specific_arg: Optional[str] = None
-) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
-    """
-    Resolve a target user from:
-      - reply_to_message
-      - numeric id
-      - @username
-    Returns: (user_dict, None) OR (None, "error message")
-    """
+) -> Tuple[Optional[Dict], Optional[str]]:
 
-    # reply
+    # A) REPLY TARGET
     if update.message and update.message.reply_to_message:
         u = update.message.reply_to_message.from_user
         return ({"user_id": u.id, "first_name": u.first_name}, None)
 
-    # argument
+    # B) SPECIFIC ARGUMENT (ID / USERNAME)
     if specific_arg:
-        # numeric id
+
+        # numeric ID
         if specific_arg.isdigit():
             return ({"user_id": int(specific_arg), "first_name": specific_arg}, None)
 
-        # username
+        # @username
         if specific_arg.startswith("@"):
             try:
                 chat = await context.bot.get_chat(specific_arg)
@@ -71,28 +86,35 @@ async def resolve_target(
                     {"user_id": chat.id, "first_name": getattr(chat, "first_name", specific_arg)},
                     None
                 )
-            except Exception:
+            except:
                 return (None, "User not found by username.")
 
+    # nothing found
     return (None, "No target found. Reply to a user or pass id/username.")
 
-# ----------------------- SUDOERS RELOADER -----------------------
+
+# -------------------------------------------------
+# 6) SUDO RELOADER (RyanBaka Compatible)
+# -------------------------------------------------
 def reload_sudoers(mongo_db):
     """
-    Load sudoers from MongoDB collection 'sudoers'.
-    Updates global SUDO_USERS list.
+    Load sudoers from MongoDB -> updates global SUDO_USERS list.
     """
     global SUDO_USERS
     SUDO_USERS = []
+
     try:
+        # get collection
         sudo_col = (
             mongo_db.sudoers
             if hasattr(mongo_db, "sudoers")
             else mongo_db.get_collection("sudoers")
         )
+
         for d in sudo_col.find():
             uid = d.get("user_id")
             if uid:
                 SUDO_USERS.append(int(uid))
+
     except Exception:
         pass
