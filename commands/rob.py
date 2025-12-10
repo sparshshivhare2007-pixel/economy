@@ -1,90 +1,45 @@
+# commands/rob.py
+from random import randint
 from telegram import Update
 from telegram.ext import ContextTypes
-import random
-from database.users import get_user, users  # sync DB
-from helpers import is_group_open, is_protected, format_delta
+from telegram.constants import ParseMode
 
+from helpers.utils import resolve_target, format_money, stylize_text, get_mention
+from database.users import users, get_user
+from helpers.utils import ensure_user_exists  # if present in utils; else use get_user wrapper
 
-def tag(user):
-    name = user.first_name.replace("<", "").replace(">", "")
-    return f"<a href='tg://user?id={user.id}'>{name}</a>"
-
+# If ensure_user_exists not in helpers, use get_user directly.
+try:
+    ensure_user_exists
+except NameError:
+    def ensure_user_exists(u): return get_user(u.id)
 
 async def rob(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    msg = update.message
-    robber = update.effective_user
-
-    # ---------------- Check if economy is open ----------------
-    if not is_group_open(chat_id):  # sync
-        return await msg.reply_text("❌ Economy abhi CLOSED hai bhai.")
-
-    # Must reply to someone
-    if not msg.reply_to_message:
-        return await msg.reply_text("Reply karke /rob karo!")
-
-    target = msg.reply_to_message.from_user
-
-    # Prevent robbing bot or self
-    if target.id == context.bot.id:
-        return await msg.reply_text("🤖 Bot ko rob nahi kar sakta bhai!")
-    if robber.id == target.id:
-        return await msg.reply_text("❌ Khud ko rob kar lega kya? 😂")
-
-    # ---------------- Protection Check ----------------
-    protected, remaining = is_protected(target.id)  # sync
-    if protected:
-        return await msg.reply_text(
-            f"❌ User is protected! Remaining: {format_delta(remaining)}"
-        )
-
-    # ---------------- Fetch user data ----------------
-    robber_data = get_user(robber.id)  # sync
-    target_data = get_user(target.id)  # sync
-
-    if target_data.get("killed", False):
-        return await msg.reply_text(f"💀 {target.first_name} toh already mar chuka hai!")
-
-    target_balance = target_data.get("balance", 0)
-    if target_balance <= 0:
-        return await msg.reply_text(
-            f"😒 {target.first_name} ke paas kuch nahi hai lootne ko!"
-        )
-
-    # ---------------- Rob amount ----------------
-    amount = random.randint(
-        max(1, int(target_balance * 0.25)),
-        max(1, int(target_balance * 0.45))
+    user_obj = update.effective_user
+    user = get_user(user_obj.id)
+    target, error = await resolve_target(update, context)
+    if not target or user["user_id"] == target["user_id"]:
+        return await update.message.reply_text("⚠️ <b>Invalid target.</b>", parse_mode=ParseMode.HTML)
+    target_doc = users.find_one({"user_id": target["user_id"]})
+    if target_doc is None:
+        return await update.message.reply_text("⚠️ Target not found.", parse_mode=ParseMode.HTML)
+    if target_doc.get("status") == "dead":
+        return await update.message.reply_text("💀 You can't rob a dead person.", parse_mode=ParseMode.HTML)
+    if user.get("status") == "dead":
+        return await update.message.reply_text("💀 Dead people can't rob.", parse_mode=ParseMode.HTML)
+    if target_doc.get("balance", 0) < 100:
+        return await update.message.reply_text("🤣 Bro is broke.", parse_mode=ParseMode.HTML)
+    success = randint(1, 100)
+    if success < 40:
+        fine = randint(50, 200)
+        users.update_one({"user_id": user["user_id"]}, {"$inc": {"balance": -fine}})
+        return await update.message.reply_text(f"❌ <b>Rob failed!</b>\nYou lost <code>{format_money(fine)}</code>", parse_mode=ParseMode.HTML)
+    amount = randint(50, max(50, target_doc["balance"] // 2))
+    users.update_one({"user_id": user["user_id"]}, {"$inc": {"balance": amount}})
+    users.update_one({"user_id": target_doc["user_id"]}, {"$inc": {"balance": -amount}})
+    msg = (
+        f"🔫 <b>Successful Rob!</b>\n"
+        f"💰 Stole: <code>{format_money(amount)}</code>\n\n"
+        f"🏅 Good job!"
     )
-
-    # ---------------- Update DB ----------------
-    users.update_one({"user_id": robber.id}, {"$inc": {"balance": amount}})
-    users.update_one({"user_id": target.id}, {"$inc": {"balance": -amount}})
-
-    # ---------------- Reply in group ----------------
-    robber_tag = tag(robber)
-    target_tag = tag(target)
-
-    await msg.reply_html(
-        f"🤑 Rob Successful!\n"
-        f"🔥 {robber_tag} ne {target_tag} ka {amount} coins loot liye! 😈"
-    )
-
-    # ---------------- DM notifications ----------------
-    try:
-        await context.bot.send_message(
-            target.id,
-            f"⚠️ Tumhe {robber_tag} ne rob kiya aur {amount} coins le gya!",
-            parse_mode="HTML"
-        )
-    except Exception:
-        pass
-
-    try:
-        await context.bot.send_message(
-            robber.id,
-            f"🎉 Tumne {target_tag} ko safalta se rob kar liya!",
-            parse_mode="HTML"
-        )
-    except Exception:
-        pass
+    await update.message.reply_text(msg, parse_mode=ParseMode.HTML)
