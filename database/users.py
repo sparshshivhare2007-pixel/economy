@@ -1,5 +1,5 @@
 # ---------------------------------------------------------
-#              FINAL MERGED ECONOMY + RYAN BAKA USER DB
+#       FINAL MERGED ECONOMY + RYAN BAKA USER DB
 # ---------------------------------------------------------
 
 from pymongo import MongoClient
@@ -16,11 +16,11 @@ db = client["economy_bot"]
 # ---------------------------------------------------------
 # COLLECTIONS
 # ---------------------------------------------------------
-users = db["users"]            # full user profile
-groups_db = db["groups"]       # group settings
-sudoers = db["sudoers"]        # sudoers list
-chatbot = db["chatbot"]        # AI chat memory
-riddles = db["riddles"]        # riddles state
+users = db["users"]             # full user profile
+groups_db = db["groups"]        # group settings
+sudoers = db["sudoers"]         # sudoers list
+chatbot = db["chatbot"]         # AI chat memory
+riddles = db["riddles"]         # riddles state
 
 # ---------------------------------------------------------
 #   CREATE / FETCH USER (FULL RYAN BAKA + ECONOMY STRUCTURE)
@@ -65,6 +65,21 @@ def get_user(user_id: int, first_name: str = None):
 def ensure_user_exists(user_obj):
     return get_user(user_obj.id, user_obj.first_name)
 
+
+# ---------------------------------------------------------
+# GROUP TRACKING (NEW FUNCTION ADDED TO FIX IMPORTERROR)
+# ---------------------------------------------------------
+
+def add_group_id(group_id: int):
+    """
+    Adds a group ID to the groups_db collection or updates its last_seen time.
+    This tracks which groups the bot is active in.
+    """
+    groups_db.update_one(
+        {"group_id": group_id},
+        {"$set": {"last_seen": datetime.utcnow()}},
+        upsert=True
+    )
 
 # ---------------------------------------------------------
 # XP + LEVEL SYSTEM
